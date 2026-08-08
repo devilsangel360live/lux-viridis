@@ -1,0 +1,60 @@
+###############################################################################
+# Lux Viridis — OMV deployment
+#
+# Three services and no database container: SQLite is a file on a bind mount,
+# which for two writers is faster than Postgres and reduces the whole backup
+# story to "copy one file".
+#
+#   docker compose up -d --build
+###############################################################################
+
+services:
+  app:
+    build: .
+    image: lux-viridis:latest
+    container_name: lux-viridis
+    restart: unless-stopped
+    environment:
+      DATABASE_FILE: /data/lux.db
+      # Behind the tunnel every request arrives over HTTPS, which is what makes
+      # the session cookie's `secure` flag correct.
+      NODE_ENV: production
+    volumes:
+      # Point LUX_DATA_DIR at a path on your OMV pool, e.g.
+      #   LUX_DATA_DIR=/srv/dev-disk-by-uuid-xxxx/appdata/lux
+      - ${LUX_DATA_DIR:-./data}:/data
+    # No ports published. The container is reached only through the tunnel, so
+    # nothing is exposed on the LAN or the router.
+    expose:
+      - "3000"
+
+  # Dials out to Cloudflare and forwards to the app. No inbound firewall rule
+  # and no port forwarding on your router.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: lux-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app
+
+  # Nightly copy of the database to the host. sqlite3 .backup is used rather
+  # than cp because it is safe against a live writer — copying the file while a
+  # transaction is in flight can capture a torn state.
+  backup:
+    image: alpine:3.20
+    container_name: lux-backup
+    restart: unless-stopped
+    volumes:
+      - ${LUX_DATA_DIR:-./data}:/data:ro
+      - ${LUX_BACKUP_DIR:-./backups}:/backups
+    command: >
+      sh -c "apk add --no-cache sqlite >/dev/null &&
+             while true; do
+               ts=$$(date +%Y%m%d-%H%M%S);
+               sqlite3 /data/lux.db \".backup '/backups/lux-$$ts.db'\" &&
+               echo \"[backup] wrote lux-$$ts.db\" ||
+               echo '[backup] FAILED';
+               ls -1t /backups/lux-*.db 2>/dev/null | tail -n +15 | xargs -r rm --;
+               sleep 86400;
+             done"

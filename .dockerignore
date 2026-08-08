@@ -1,0 +1,26 @@
+# Build artefacts and dependencies are produced inside the image.
+node_modules
+.next
+out
+
+# The database is a runtime volume, never part of the image. Without this the
+# build traces data/lux.db into the bundle, baking demo content and password
+# hashes into a shipped artefact.
+data
+*.db
+*.db-shm
+*.db-wal
+
+# Local environment and tooling
+.env
+.env.local
+.git
+.gitignore
+.DS_Store
+scratchpad
+
+# Editor and docs
+.vscode
+.idea
+README.md
+*.log

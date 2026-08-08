@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786156647841,
+      "tag": "0000_woozy_hardball",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786159895344,
+      "tag": "0001_spotty_lilandra",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786201966489,
+      "tag": "0002_boring_night_nurse",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786203004691,
+      "tag": "0003_milky_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786217553508,
+      "tag": "0004_wakeful_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786223228435,
+      "tag": "0005_married_marrow",
+      "breakpoints": true
+    }
+  ]
+}
