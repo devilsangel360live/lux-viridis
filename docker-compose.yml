@@ -1,9 +1,14 @@
 ###############################################################################
 # Lux Viridis — OMV deployment
 #
-# Three services and no database container: SQLite is a file on a bind mount,
+# Two services and no database container: SQLite is a file on a bind mount,
 # which for two writers is faster than Postgres and reduces the whole backup
 # story to "copy one file".
+#
+# No cloudflared here. This assumes you already run one as its own service —
+# alongside calibre-web, Kavita and the rest — so the tunnel routes to this app
+# by host IP and port, exactly like your other hostnames. See README for the
+# Public Hostname value to enter in the Cloudflare dashboard.
 #
 #   docker compose up -d --build
 ###############################################################################
@@ -16,27 +21,19 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_FILE: /data/lux.db
-      # Behind the tunnel every request arrives over HTTPS, which is what makes
-      # the session cookie's `secure` flag correct.
+      # Traffic arrives at Cloudflare over HTTPS, which is what makes the
+      # session cookie's `secure` flag correct — even though the last hop from
+      # cloudflared to this container is plain HTTP on the LAN.
       NODE_ENV: production
     volumes:
       # Point LUX_DATA_DIR at a path on your OMV pool, e.g.
-      #   LUX_DATA_DIR=/srv/dev-disk-by-uuid-xxxx/appdata/lux
+      #   LUX_DATA_DIR=/srv/dev-disk-by-uuid-xxxx/appdata/lux/data
       - ${LUX_DATA_DIR:-./data}:/data
-    # No ports published. The container is reached only through the tunnel, so
-    # nothing is exposed on the LAN or the router.
-    expose:
-      - "3000"
-
-  # Dials out to Cloudflare and forwards to the app. No inbound firewall rule
-  # and no port forwarding on your router.
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: lux-tunnel
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - app
+    ports:
+      # Published on the host so an externally-managed cloudflared can reach it.
+      # Change the left-hand side if 3000 is already taken on the box; only that
+      # number goes in the tunnel's Public Hostname.
+      - "${LUX_PORT:-3000}:3000"
 
   # Nightly copy of the database to the host. sqlite3 .backup is used rather
   # than cp because it is safe against a live writer — copying the file while a

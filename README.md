@@ -66,26 +66,14 @@ tunnel token is the one thing you must supply by hand.
 
 ## Deploying to OMV
 
-Start to finish, assuming a bare OMV box. Roughly half an hour, most of it
-waiting for the image to build.
+Written for a box that already runs Docker and a `cloudflared` service of its
+own — the same way calibre-web, Suwayomi and Kavita are already published. This
+stack therefore ships **no tunnel container**: it publishes a LAN port, and the
+existing tunnel routes to it like any other hostname.
 
-### 1. Install Docker on OMV
+Roughly half an hour, most of it waiting for the image to build.
 
-OMV does not ship Docker. The supported route is the **omv-extras** plugin:
-
-1. In the OMV web UI, **System → Plugins**, install `openmediavault-compose`
-   (it pulls in omv-extras and Docker).
-2. **Services → Compose → Settings**, set the Docker storage path to a folder
-   on your data pool — not the OS disk, which is usually small.
-3. Click **Install Docker** in that same settings page.
-
-Then confirm over SSH:
-
-```bash
-docker --version && docker compose version
-```
-
-### 2. Create a folder on the pool
+### 1. Create a folder on the pool
 
 Everything lives together — code, database, backups — so one folder is the
 whole deployment:
@@ -97,7 +85,7 @@ cd /srv/dev-disk-by-uuid-XXXX/appdata/lux
 sudo chown -R $USER:$USER .
 ```
 
-### 3. Get the code onto the box
+### 2. Get the code onto the box
 
 ```bash
 git clone <your-repo-url> app
@@ -114,48 +102,24 @@ rsync -av --exclude node_modules --exclude .next --exclude data \
   ~/Projects/"Lux Viridis"/ omv-user@omv-host:/srv/.../appdata/lux/app/
 ```
 
-### 4. Configure
+### 3. Configure
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Set the two paths to absolute locations on the pool, and leave the tunnel token
-blank for now:
-
 ```
 LUX_DATA_DIR=/srv/dev-disk-by-uuid-XXXX/appdata/lux/data
 LUX_BACKUP_DIR=/srv/dev-disk-by-uuid-XXXX/appdata/lux/backups
-CLOUDFLARE_TUNNEL_TOKEN=
+LUX_PORT=3000
 ```
 
-### 5. Create the Cloudflare tunnel
+Pick a `LUX_PORT` nothing else on the box is using — check with
+`sudo ss -ltnp | grep :3000`. Whatever you choose is the port you give the
+tunnel in the next step.
 
-In the **Cloudflare Zero Trust** dashboard → **Networks → Tunnels → Create a
-tunnel** → **Cloudflared**. Name it, then choose **Docker** on the connector
-screen. Copy the long token out of the displayed command — the token only, not
-the whole `cloudflared ... run --token` line — into `CLOUDFLARE_TUNNEL_TOKEN`.
-
-Then add a **Public Hostname** to the tunnel:
-
-| field | value |
-|---|---|
-| Subdomain | e.g. `write` |
-| Domain | your domain |
-| Type | `HTTP` |
-| URL | `app:3000` |
-
-**`app:3000`, not `localhost:3000`.** The connector runs in its own container,
-so `localhost` there is the connector itself, not your app. Compose puts both
-services on one network where `app` resolves to the app container. A wrong value
-here produces a `502` from Cloudflare with a perfectly healthy app behind it —
-the single most common way this setup fails.
-
-`HTTP` is correct even though visitors arrive over HTTPS: Cloudflare terminates
-TLS at the edge, and the last hop inside the machine is plain HTTP.
-
-### 6. Start it
+### 4. Start it
 
 Create the data directories first and hand them to the container's user. The
 app runs as uid 1001, and a bind mount keeps the *host's* ownership — so
@@ -170,18 +134,48 @@ sudo chown -R 1001:1001 /srv/dev-disk-by-uuid-XXXX/appdata/lux/data
 docker compose up -d --build
 ```
 
-The first build takes 5–15 minutes, mostly compiling `better-sqlite3`. Then:
+The first build takes 5–15 minutes, mostly compiling `better-sqlite3`.
+
+Verify it works on the LAN before involving Cloudflare — this splits "the app is
+broken" from "the routing is wrong", which otherwise look identical:
 
 ```bash
-docker compose ps          # all three services 'running'; app also 'healthy'
-docker compose logs -f app # expect "applying migrations…" then "Ready in ..."
+docker compose ps                        # 'running', app also 'healthy'
+docker compose logs -f app               # "applying migrations…" then "Ready in ..."
+curl -I http://localhost:3000/login      # expect HTTP/1.1 200
 ```
 
-Visit `https://write.yourdomain.com`. The setup screen creates your account.
-**Do not seed the demo data on a deployment** — `writer@example.com / password`
-is a development convenience.
+### 5. Add the hostname to your existing tunnel
 
-### 7. Lock it down (recommended)
+Exactly as you did for calibre-web and Kavita. In the **Cloudflare Zero Trust**
+dashboard → **Networks → Tunnels**, pick your existing tunnel → **Configure** →
+**Public Hostname** → **Add a public hostname**:
+
+| field | value |
+|---|---|
+| Subdomain | e.g. `write` |
+| Domain | your domain |
+| Type | `HTTP` |
+| URL | same host:port form your other services use, with `LUX_PORT` |
+
+The URL is whatever pattern already works for your other services — if
+`books.…` points at `192.168.x.x:8083`, then `write.…` points at the same host
+IP with `LUX_PORT`. Copy the working entry rather than inventing a new form.
+
+Why it depends on your setup: a `cloudflared` in Docker cannot reach
+`localhost` — inside that container `localhost` is the connector itself. It
+works if run with `network_mode: host`, or if you use the host's LAN IP, or if
+`cloudflared` is a systemd service on the box rather than a container. Your
+existing hostnames prove which case you are in, so mirror them.
+
+`HTTP` is correct even though visitors arrive over HTTPS: Cloudflare terminates
+TLS at the edge, and the last hop on your LAN is plain HTTP.
+
+Then visit `https://write.yourdomain.com`. The setup screen creates your
+account. **Do not seed the demo data on a deployment** —
+`writer@example.com / password` is a development convenience.
+
+### 6. Lock it down (recommended)
 
 The site is on the public internet, and anyone who finds it reaches your login
 page. To put Cloudflare's own authentication in front of it, go to **Zero Trust
@@ -203,28 +197,44 @@ the image, so rebuilds never touch your writing.
 
 ### If something goes wrong
 
+First establish which half is broken. If `curl -I http://localhost:3000/login`
+on the box returns 200, the app is fine and the problem is routing.
+
 | symptom | cause |
 |---|---|
-| Cloudflare `502` | Public Hostname URL is not `app:3000` |
-| Login does nothing, no error | App reached over plain HTTP; set `LUX_INSECURE_COOKIES=1` |
+| Cloudflare `502`, `curl` on the box works | Tunnel URL unreachable from the connector — use the form your other hostnames use, not `localhost` |
+| `curl` on the box fails too | App not running: `docker compose logs app` |
+| Port already allocated on `up` | Something else holds `LUX_PORT`; pick another and update the tunnel |
+| Login does nothing, no error | Reached over plain HTTP; set `LUX_INSECURE_COOKIES=1` |
 | `EACCES` / read-only database | `LUX_DATA_DIR` not writable by uid 1001: `sudo chown -R 1001:1001 <data dir>` |
-| Build fails compiling `better-sqlite3` | Out of memory; close other containers or add swap |
-| App healthy, tunnel not connecting | Bad or truncated token — copy just the token |
+| Build fails compiling `better-sqlite3` | Out of memory; stop other containers or add swap |
 
 ### How it fits together
 
-Three services, no database container: SQLite is a file on a bind mount, which
-for two writers is faster than Postgres and reduces backups to copying one file.
+Two services, no database container: SQLite is a file on a bind mount, which for
+two writers is faster than Postgres and reduces backups to copying one file.
 
 - **app** — multi-stage build. The compiler toolchain that `better-sqlite3`
   needs lives only in the build stage; the runtime image is Next's standalone
   output (~60MB of app on a slim Node 22 base). Runs as a non-root user, and
-  publishes no ports — it is reachable only through the tunnel.
-- **cloudflared** — dials out to Cloudflare, so there is no inbound firewall
-  rule and no port forwarding on the router.
+  publishes `LUX_PORT` on the host so the existing tunnel can reach it.
 - **backup** — nightly `sqlite3 .backup` to `LUX_BACKUP_DIR`, keeping 14
   snapshots. `.backup` rather than `cp` because copying a live database can
   capture a torn transaction.
+
+No `cloudflared` service: this assumes the box already runs one for its other
+hostnames. A second connector would work but means a second tunnel to maintain,
+and the app would then be the only service not published the way the rest are.
+If you ever want the stack self-contained, add a `cloudflared` service with its
+own token and point its Public Hostname at `app:3000` — inside one Compose
+project the service name resolves, which it does not across projects.
+
+Because the port is published on the LAN, the app is also reachable at
+`http://<box-ip>:3000` from inside the house, bypassing Cloudflare — convenient,
+but it means anyone on your network can reach the login page. Bind it to
+localhost (`127.0.0.1:${LUX_PORT}:3000`) if you would rather it were reachable
+only through the tunnel; do that only if your `cloudflared` runs on the host
+rather than in a container, or it will lose its route to the app.
 
 Migrations run in the entrypoint before the server accepts traffic, so a deploy
 that adds a column can never serve requests against the old schema. The runner
