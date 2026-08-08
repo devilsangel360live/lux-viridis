@@ -38,12 +38,180 @@ like zoom, and follows the person rather than the manuscript. It applies to the
 writing canvas only; the interface stays sans-serif, since that contrast is part
 of what makes the canvas feel like a page.
 
-## Deploying to OMV
+## Publishing the repo
+
+The repository is initialised with everything committed on `main`. To push it
+somewhere the OMV box can clone from:
 
 ```bash
-cp .env.example .env      # set LUX_DATA_DIR, LUX_BACKUP_DIR, tunnel token
+gh repo create lux-viridis --private --source=. --remote=origin --push
+```
+
+Or with an existing remote:
+
+```bash
+git remote add origin <url>
+git push -u origin main
+```
+
+**Private is the right default** — not because the code is sensitive, but
+because this is your daughter's writing project, and a public repo invites
+attention she has not asked for.
+
+Deliberately never committed: `data/` (the database holds manuscripts *and*
+password hashes), `backups/`, and `.env` (the tunnel token grants the ability to
+route traffic to your machine). `.env.example` is committed, since it documents
+every variable and contains no values. If you clone this on the OMV box, the
+tunnel token is the one thing you must supply by hand.
+
+## Deploying to OMV
+
+Start to finish, assuming a bare OMV box. Roughly half an hour, most of it
+waiting for the image to build.
+
+### 1. Install Docker on OMV
+
+OMV does not ship Docker. The supported route is the **omv-extras** plugin:
+
+1. In the OMV web UI, **System → Plugins**, install `openmediavault-compose`
+   (it pulls in omv-extras and Docker).
+2. **Services → Compose → Settings**, set the Docker storage path to a folder
+   on your data pool — not the OS disk, which is usually small.
+3. Click **Install Docker** in that same settings page.
+
+Then confirm over SSH:
+
+```bash
+docker --version && docker compose version
+```
+
+### 2. Create a folder on the pool
+
+Everything lives together — code, database, backups — so one folder is the
+whole deployment:
+
+```bash
+# Adjust to your actual pool path; `ls /srv` will show it.
+sudo mkdir -p /srv/dev-disk-by-uuid-XXXX/appdata/lux
+cd /srv/dev-disk-by-uuid-XXXX/appdata/lux
+sudo chown -R $USER:$USER .
+```
+
+### 3. Get the code onto the box
+
+```bash
+git clone <your-repo-url> app
+cd app
+```
+
+No repo yet? See **Publishing the repo** below. As an alternative, copy it from
+your Mac — the `--exclude`s matter, since `node_modules` is large and
+platform-specific, and `data/` is your local database:
+
+```bash
+# Run this on the Mac, not on OMV.
+rsync -av --exclude node_modules --exclude .next --exclude data \
+  ~/Projects/"Lux Viridis"/ omv-user@omv-host:/srv/.../appdata/lux/app/
+```
+
+### 4. Configure
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Set the two paths to absolute locations on the pool, and leave the tunnel token
+blank for now:
+
+```
+LUX_DATA_DIR=/srv/dev-disk-by-uuid-XXXX/appdata/lux/data
+LUX_BACKUP_DIR=/srv/dev-disk-by-uuid-XXXX/appdata/lux/backups
+CLOUDFLARE_TUNNEL_TOKEN=
+```
+
+### 5. Create the Cloudflare tunnel
+
+In the **Cloudflare Zero Trust** dashboard → **Networks → Tunnels → Create a
+tunnel** → **Cloudflared**. Name it, then choose **Docker** on the connector
+screen. Copy the long token out of the displayed command — the token only, not
+the whole `cloudflared ... run --token` line — into `CLOUDFLARE_TUNNEL_TOKEN`.
+
+Then add a **Public Hostname** to the tunnel:
+
+| field | value |
+|---|---|
+| Subdomain | e.g. `write` |
+| Domain | your domain |
+| Type | `HTTP` |
+| URL | `app:3000` |
+
+**`app:3000`, not `localhost:3000`.** The connector runs in its own container,
+so `localhost` there is the connector itself, not your app. Compose puts both
+services on one network where `app` resolves to the app container. A wrong value
+here produces a `502` from Cloudflare with a perfectly healthy app behind it —
+the single most common way this setup fails.
+
+`HTTP` is correct even though visitors arrive over HTTPS: Cloudflare terminates
+TLS at the edge, and the last hop inside the machine is plain HTTP.
+
+### 6. Start it
+
+Create the data directories first and hand them to the container's user. The
+app runs as uid 1001, and a bind mount keeps the *host's* ownership — so
+without this the first write fails with a read-only database error:
+
+```bash
+mkdir -p /srv/dev-disk-by-uuid-XXXX/appdata/lux/{data,backups}
+sudo chown -R 1001:1001 /srv/dev-disk-by-uuid-XXXX/appdata/lux/data
+```
+
+```bash
 docker compose up -d --build
 ```
+
+The first build takes 5–15 minutes, mostly compiling `better-sqlite3`. Then:
+
+```bash
+docker compose ps          # all three services 'running'; app also 'healthy'
+docker compose logs -f app # expect "applying migrations…" then "Ready in ..."
+```
+
+Visit `https://write.yourdomain.com`. The setup screen creates your account.
+**Do not seed the demo data on a deployment** — `writer@example.com / password`
+is a development convenience.
+
+### 7. Lock it down (recommended)
+
+The site is on the public internet, and anyone who finds it reaches your login
+page. To put Cloudflare's own authentication in front of it, go to **Zero Trust
+→ Access → Applications → Add an application → Self-hosted**, select the
+hostname, and add a policy allowing only your and your daughter's email
+addresses. Visitors then get a Cloudflare email-code prompt before the app is
+reachable at all.
+
+### Updating later
+
+```bash
+cd /srv/.../appdata/lux/app
+git pull
+docker compose up -d --build
+```
+
+Migrations run automatically on start. The database is on a bind mount outside
+the image, so rebuilds never touch your writing.
+
+### If something goes wrong
+
+| symptom | cause |
+|---|---|
+| Cloudflare `502` | Public Hostname URL is not `app:3000` |
+| Login does nothing, no error | App reached over plain HTTP; set `LUX_INSECURE_COOKIES=1` |
+| `EACCES` / read-only database | `LUX_DATA_DIR` not writable by uid 1001: `sudo chown -R 1001:1001 <data dir>` |
+| Build fails compiling `better-sqlite3` | Out of memory; close other containers or add swap |
+| App healthy, tunnel not connecting | Bad or truncated token — copy just the token |
+
+### How it fits together
 
 Three services, no database container: SQLite is a file on a bind mount, which
 for two writers is faster than Postgres and reduces backups to copying one file.
