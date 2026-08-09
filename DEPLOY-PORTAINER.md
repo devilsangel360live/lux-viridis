@@ -29,6 +29,7 @@ You need:
 
   Anything printed means that port is taken. Pick one that prints nothing —
   this guide assumes `3000`.
+
 - **SSH access.** Two steps genuinely need a shell; Portainer cannot set
   filesystem ownership.
 
@@ -58,7 +59,7 @@ sudo chown -R 1001:1001 $POOL/appdata/lux/data
 ```
 
 **Do not skip this.** The app runs as uid 1001 inside the container, and a bind
-mount keeps the *host's* ownership — the image's own permissions do not apply to
+mount keeps the _host's_ ownership — the image's own permissions do not apply to
 mounted folders. Without this, the app starts normally and then fails on the
 first save with a read-only database error, which looks like an app bug rather
 than a permissions problem.
@@ -81,15 +82,15 @@ Open Portainer → **Stacks** → **+ Add stack**.
 
 Fill in:
 
-| field | value |
-|---|---|
-| Repository URL | your repo URL, e.g. `https://github.com/you/lux-viridis` |
-| Repository reference | `refs/heads/main` |
-| Compose path | `docker-compose.yml` |
+| field                | value                                                    |
+| -------------------- | -------------------------------------------------------- |
+| Repository URL       | your repo URL, e.g. `https://github.com/you/lux-viridis` |
+| Repository reference | `refs/heads/main`                                        |
+| Compose path         | `docker-compose.yml`                                     |
 
 If the repository is **private**, switch on **Authentication** and supply a
 GitHub personal access token as the password. A classic token needs only the
-`repo` scope; a fine-grained one needs read access to *Contents*.
+`repo` scope; a fine-grained one needs read access to _Contents_.
 
 ---
 
@@ -99,11 +100,11 @@ Still on the Add-stack page, scroll to **Environment variables** and add three.
 Use **+ Add an environment variable** for each, or **Advanced mode** to paste
 them all at once.
 
-| name | value |
-|---|---|
-| `LUX_DATA_DIR` | `/srv/dev-disk-by-uuid-XXXX/appdata/lux/data` |
-| `LUX_BACKUP_DIR` | `/srv/dev-disk-by-uuid-XXXX/appdata/lux/backups` |
-| `LUX_PORT` | `3000` |
+| name             | value                                                                            |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `LUX_DATA_DIR`   | `/srv/dev-disk-by-uuid-44557c8d-25b0-4e66-9291-1fddc461a068/appdata/lux/data`    |
+| `LUX_BACKUP_DIR` | `/srv/dev-disk-by-uuid-44557c8d-25b0-4e66-9291-1fddc461a068/appdata/lux/backups` |
+| `LUX_PORT`       | `3000`                                                                           |
 
 Substitute your real pool path from Step 1. **Absolute paths only.**
 
@@ -176,13 +177,13 @@ In the **Cloudflare Zero Trust** dashboard → **Networks → Tunnels** → your
 existing tunnel → **Configure** → **Public Hostname** → **Add a public
 hostname**:
 
-| field | value |
-|---|---|
+| field     | value                            |
+| --------- | -------------------------------- |
 | Subdomain | `write` (or whatever you prefer) |
-| Domain | your domain |
-| Path | leave empty |
-| Type | `HTTP` |
-| URL | *see below* |
+| Domain    | your domain                      |
+| Path      | leave empty                      |
+| Type      | `HTTP`                           |
+| URL       | _see below_                      |
 
 **For the URL, copy the pattern your working hostnames already use.** Open the
 entry for an existing service (calibre-web, Kavita) and look at its URL:
@@ -278,6 +279,11 @@ and restarts.
 Migrations run automatically at startup. The database is a bind mount outside
 the image, so rebuilds never touch your writing.
 
+> If you deployed with a prebuilt image instead
+> ([Appendix C](#appendix-c--deploying-a-prebuilt-image)), this section does not
+> apply — **Pull and redeploy** fails with _pull access denied_, because the
+> image is local and not in any registry. Follow Appendix C's update steps.
+
 ---
 
 ## Backups
@@ -312,16 +318,19 @@ curl -I http://localhost:3000/login
 200 means the app is fine and the problem is routing. Anything else means the
 problem is the app.
 
-| symptom | cause and fix |
-|---|---|
-| Cloudflare 502, `curl` returns 200 | Tunnel URL is wrong for how your `cloudflared` runs. Copy the URL form from a working hostname (Step 6). |
-| `curl` connection refused | App not running. `docker logs lux-viridis`. |
-| Deploy fails: *port is already allocated* | Something else holds 3000. Pick another `LUX_PORT`, redeploy, update the tunnel URL to match. |
-| App runs, saving fails, logs show `SQLITE_READONLY` or `EACCES` | Step 1's `chown` was missed. `sudo chown -R 1001:1001 <data dir>`, then restart the stack. |
-| `lux.db` is not in your pool folder | `LUX_DATA_DIR` was unset or relative at deploy time. Fix the variable, redeploy, and move any existing database across. |
-| Login page accepts the password then returns to login | Cookie rejected because the connection is not HTTPS. Reach the site through the Cloudflare hostname, not the LAN IP. For LAN-only use, add `LUX_INSECURE_COOKIES=1` to the app service. |
-| Build fails during `npm ci` or `node-gyp` | Out of memory compiling `better-sqlite3`. Stop other containers and retry, or add swap. |
-| Build fails: *no such file or directory, Dockerfile* | Compose path is wrong in the stack settings. It should be `docker-compose.yml` at the repository root. |
+| symptom                                                         | cause and fix                                                                                                                                                                           |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloudflare 502, `curl` returns 200                              | Tunnel URL is wrong for how your `cloudflared` runs. Copy the URL form from a working hostname (Step 6).                                                                                |
+| `curl` connection refused                                       | App not running. `docker logs lux-viridis`.                                                                                                                                             |
+| Deploy fails: _port is already allocated_                       | Something else holds 3000. Pick another `LUX_PORT`, redeploy, update the tunnel URL to match.                                                                                           |
+| App runs, saving fails, logs show `SQLITE_READONLY` or `EACCES` | Step 1's `chown` was missed. `sudo chown -R 1001:1001 <data dir>`, then restart the stack.                                                                                              |
+| `lux.db` is not in your pool folder                             | `LUX_DATA_DIR` was unset or relative at deploy time. Fix the variable, redeploy, and move any existing database across.                                                                 |
+| Login page accepts the password then returns to login           | Cookie rejected because the connection is not HTTPS — the browser console says so explicitly. Reach the site through the Cloudflare hostname, not the LAN IP. To test over the LAN first, set `LUX_INSECURE_COOKIES: "1"` in the app service, then **remove it** once the tunnel is up: over plain HTTP the password crosses the network in clear text. |
+| Build fails during `npm ci` or `node-gyp`                       | Out of memory compiling `better-sqlite3`. Stop other containers and retry, or add swap.                                                                                                 |
+| Build fails at `npm run build`, no useful error in Portainer    | Build it over SSH to see the real error: `docker build -t lux-viridis:latest .`. If that succeeds where Portainer fails, deploy the image instead — [Appendix C](#appendix-c--deploying-a-prebuilt-image). |
+| Stack redeploy fails: _pull access denied_                      | The stack uses a locally built image, so there is nothing to pull. Use **Update the stack** with **Re-pull image** off, not **Pull and redeploy** — [Appendix C](#appendix-c--deploying-a-prebuilt-image). |
+| A variable set in Portainer never reaches the app               | Check with `docker exec lux-viridis env \| grep LUX_`. If missing, put it in the compose YAML's `environment:` block instead and update the stack.                                       |
+| Build fails: _no such file or directory, Dockerfile_            | Compose path is wrong in the stack settings. It should be `docker-compose.yml` at the repository root.                                                                                  |
 
 ---
 
@@ -352,7 +361,7 @@ networks:
 ```
 
 The tunnel URL then becomes `http://lux-viridis:3000` — the container name with
-the *internal* port 3000, not `LUX_PORT`. With this arrangement you can also
+the _internal_ port 3000, not `LUX_PORT`. With this arrangement you can also
 drop the `ports:` block entirely, which stops the app being reachable from the
 LAN at all.
 
@@ -384,6 +393,88 @@ nano .env                      # set the three variables from Step 3
 docker compose up -d --build
 ```
 
-The stack still appears in Portainer (as *limited* control) for logs and
+The stack still appears in Portainer (as _limited_ control) for logs and
 restarts. Updating means repeating the `rsync` and the `docker compose up -d
 --build`.
+
+---
+
+## Appendix C — deploying a prebuilt image
+
+Portainer builds the image itself in the main path above. If that build fails
+inside Portainer but succeeds over SSH, build it by hand and have the stack run
+the finished image instead. The app is identical either way; only who runs
+`docker build` changes.
+
+Build on the box:
+
+```bash
+git clone https://github.com/devilsangel360live/lux-viridis.git /tmp/lux-build
+cd /tmp/lux-build
+docker build -t lux-viridis:latest .
+```
+
+Unlike Portainer's spinner, this prints the real error if a build step fails.
+
+Then in Portainer → **Stacks → + Add stack**, set **Build method** to **Web
+editor** and paste the compose file with `build: .` removed from the `app`
+service, so it uses the image you just built:
+
+```yaml
+services:
+  app:
+    image: lux-viridis:latest
+    container_name: lux-viridis
+    restart: unless-stopped
+    environment:
+      DATABASE_FILE: /data/lux.db
+      NODE_ENV: production
+    volumes:
+      - ${LUX_DATA_DIR:-./data}:/data
+    ports:
+      - "${LUX_PORT:-3000}:3000"
+```
+
+Copy the `backup` service across from `docker-compose.yml` unchanged, and set
+the environment variables from Step 3 as normal. Then delete the build clone —
+`/tmp` does not survive a reboot, and nothing needs it after the image exists:
+
+```bash
+cd / && rm -rf /tmp/lux-build
+```
+
+Do **not** run `docker compose up` from the clone directory. `LUX_DATA_DIR` is
+not set there, so the compose file falls back to `./data` and the database lands
+in `/tmp` instead of your pool — where it will not survive a reboot. Deploy from
+Portainer, where the variables are set, and confirm with Step 5.
+
+### Updating
+
+The one-button redeploy does not work here: **Pull and redeploy** tries to fetch
+`lux-viridis:latest` from Docker Hub, where it does not exist, and fails with
+_pull access denied_. Rebuild and restart instead:
+
+```bash
+rm -rf /tmp/lux-build                    # a leftover clone would fail the next line
+git clone https://github.com/devilsangel360live/lux-viridis.git /tmp/lux-build
+cd /tmp/lux-build
+docker build -t lux-viridis:latest .
+cd / && rm -rf /tmp/lux-build
+```
+
+Then Portainer → **Stacks → lux-viridis → Update the stack**, with **Re-pull
+image** left off. Migrations run at startup as usual, and the database is a bind
+mount, so none of this touches your writing.
+
+### Environment variables that will not apply
+
+Adding a variable in Portainer's editor saves the definition without
+necessarily recreating the container, so the running app never sees it. Check:
+
+```bash
+docker exec lux-viridis env | grep LUX_
+```
+
+If a variable you set is missing, put it directly in the compose YAML instead —
+in the `app` service's `environment:` block, quoted, e.g.
+`LUX_INSECURE_COOKIES: "1"` — and update the stack again.

@@ -30,8 +30,9 @@ are adjustable alongside.
 Bundled rather than uploadable on purpose: accepting arbitrary font binaries on
 a family server means parsing untrusted files and inheriting whatever licence
 they carry — a lot of surface for a preference. All eight are open-licensed and
-self-hosted by `next/font` at build time, so nothing is fetched from Google at
-runtime.
+vendored into `src/app/fonts/`, loaded with `next/font/local`, so nothing is
+fetched from Google at build time or at runtime — the image builds on a machine
+with no outbound network. `npm run fonts:vendor` refreshes the files.
 
 The choice is per reader, stored in `localStorage` — it is a comfort setting
 like zoom, and follows the person rather than the manuscript. It applies to the
