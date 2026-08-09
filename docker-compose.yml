@@ -47,6 +47,12 @@ services:
   # with SQLITE_READONLY_DIRECTORY. The connection itself is opened read-only
   # in the script, which is where the real guarantee lives.
   stories:
+    # Same `build:` and `image:` as app, deliberately. Without `build:` here,
+    # "Re-pull image and redeploy" in Portainer treats lux-viridis:latest as a
+    # registry image and fails with "pull access denied" — the image is built
+    # locally and was never pushed anywhere. Declaring the build makes Compose
+    # reuse the layer cache from app rather than build twice.
+    build: .
     image: lux-viridis:latest
     container_name: lux-stories
     restart: unless-stopped
