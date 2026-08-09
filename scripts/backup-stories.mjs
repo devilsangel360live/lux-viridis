@@ -419,8 +419,21 @@ const dayDir = path.join(backupRoot, today);
 
 // A re-run on the same day replaces that day's folder rather than merging into
 // it, so a renamed or deleted chapter cannot leave an orphan file behind.
-fs.rmSync(dayDir, { recursive: true, force: true });
-fs.mkdirSync(dayDir, { recursive: true });
+try {
+  fs.rmSync(dayDir, { recursive: true, force: true });
+  fs.mkdirSync(dayDir, { recursive: true });
+} catch (err) {
+  if (err.code !== "EACCES" && err.code !== "EPERM") throw err;
+  // The container runs as uid 1001; a backup directory created by root — by
+  // hand, or by the root-run .db backup service beside it — is not writable
+  // here. A stack trace buries that, and the fix is one chown.
+  console.error(
+    `[backup] cannot write ${backupRoot} (${err.code}).\n` +
+      `[backup] The container runs as uid 1001. Fix on the host with:\n` +
+      `[backup]   chown -R 1001:1001 <the directory mounted at ${backupRoot}>`,
+  );
+  process.exit(1);
+}
 
 const projects = db.prepare("SELECT * FROM projects ORDER BY title").all();
 

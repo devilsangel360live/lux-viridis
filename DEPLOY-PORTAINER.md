@@ -52,10 +52,11 @@ POOL=/srv/dev-disk-by-uuid-XXXX          # <- edit this line
 sudo mkdir -p $POOL/appdata/lux/{data,backups}
 ```
 
-Now hand the data folder to the container's user:
+Now hand the folders the container writes to over to its user:
 
 ```bash
-sudo chown -R 1001:1001 $POOL/appdata/lux/data
+sudo mkdir -p $POOL/appdata/lux/backups/stories
+sudo chown -R 1001:1001 $POOL/appdata/lux/data $POOL/appdata/lux/backups/stories
 ```
 
 **Do not skip this.** The app runs as uid 1001 inside the container, and a bind
@@ -64,11 +65,16 @@ mounted folders. Without this, the app starts normally and then fails on the
 first save with a read-only database error, which looks like an app bug rather
 than a permissions problem.
 
+`backups/stories` needs the same treatment for the same reason: the Markdown
+dump runs as uid 1001 and fails with `EACCES: permission denied, mkdir` if the
+folder belongs to root. Only that subfolder — leave `backups/` itself owned by
+root, since the `.db` snapshot service beside it runs as root and writes there.
+
 Confirm:
 
 ```bash
-ls -ln $POOL/appdata/lux
-# data should show owner 1001, group 1001
+ls -ln $POOL/appdata/lux $POOL/appdata/lux/backups
+# data and backups/stories should show owner 1001, group 1001
 ```
 
 ---
@@ -356,6 +362,8 @@ problem is the app.
 | `curl` connection refused                                       | App not running. `docker logs lux-viridis`.                                                                                                                                             |
 | Deploy fails: _port is already allocated_                       | Something else holds 3000. Pick another `LUX_PORT`, redeploy, update the tunnel URL to match.                                                                                           |
 | App runs, saving fails, logs show `SQLITE_READONLY` or `EACCES` | Step 1's `chown` was missed. `sudo chown -R 1001:1001 <data dir>`, then restart the stack.                                                                                              |
+| `lux-stories` logs `EACCES: permission denied, mkdir`           | The Markdown backup folder belongs to root. `sudo mkdir -p <backup dir>/stories && sudo chown -R 1001:1001 <backup dir>/stories`. Chown only that subfolder — the `.db` backup service beside it runs as root. |
+| `lux-stories` shows `unhealthy` but backups are being written    | Expected. It inherits the app image's healthcheck, which polls `/login`; this container runs a backup loop and serves no HTTP. Cosmetic — add `healthcheck: {disable: true}` to the service to silence it. |
 | `lux.db` is not in your pool folder                             | `LUX_DATA_DIR` was unset or relative at deploy time. Fix the variable, redeploy, and move any existing database across.                                                                 |
 | Login page accepts the password then returns to login           | Cookie rejected because the connection is not HTTPS — the browser console says so explicitly. Reach the site through the Cloudflare hostname, not the LAN IP. To test over the LAN first, set `LUX_INSECURE_COOKIES: "1"` in the app service, then **remove it** once the tunnel is up: over plain HTTP the password crosses the network in clear text. |
 | Build fails during `npm ci` or `node-gyp`                       | Out of memory compiling `better-sqlite3`. Stop other containers and retry, or add swap.                                                                                                 |
@@ -491,6 +499,10 @@ services:
     volumes:
       - ${LUX_DATA_DIR:-./data}:/data
       - ${LUX_BACKUP_DIR:-./backups}:/backups
+    # This container serves no HTTP, so the image's /login healthcheck would
+    # report `unhealthy` forever.
+    healthcheck:
+      disable: true
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "while true; do

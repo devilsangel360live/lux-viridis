@@ -65,6 +65,12 @@ services:
     volumes:
       - ${LUX_DATA_DIR:-./data}:/data
       - ${LUX_BACKUP_DIR:-./backups}:/backups
+    # The image's healthcheck polls /login, which this container does not serve
+    # — it runs a backup loop, not a web server. Left enabled it reports
+    # `unhealthy` forever, and a permanently red status trains you to ignore
+    # red statuses.
+    healthcheck:
+      disable: true
     # Overrides the image's entrypoint: migrations must not run from here — the
     # app container already applied them on its own startup.
     entrypoint: ["/bin/sh", "-c"]
