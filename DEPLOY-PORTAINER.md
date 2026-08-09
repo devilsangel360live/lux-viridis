@@ -269,6 +269,38 @@ someone's private writing.
 
 ---
 
+## Which path did I deploy with?
+
+Worth settling before any update, because the two paths update differently and
+the wrong one silently redeploys the *old* image instead of failing loudly.
+
+Open Portainer → **Stacks → lux-viridis** and look at the top of the page:
+
+| What you see                                     | Path                                   | To update                                |
+| ------------------------------------------------ | -------------------------------------- | ---------------------------------------- |
+| A repository URL and **Pull and redeploy**        | Repository (the main path)             | This section                             |
+| A YAML textarea and **Update the stack**          | Web editor — [Appendix C](#appendix-c--deploying-a-prebuilt-image) | Appendix C's update steps |
+
+A Web-editor stack has no repository behind it: the YAML in that box is the
+whole stack definition, and **Update the stack** never contacts git. If the
+compose file says `build: .`, Compose looks for a Dockerfile in Portainer's
+stack folder, finds none, and quietly reuses whatever `lux-viridis:latest`
+already exists on the box — so the containers restart on old code and the
+update appears to succeed.
+
+To check which commit is actually running, look for a file you know is recent:
+
+```bash
+docker exec lux-viridis ls -l scripts/backup-stories.mjs
+```
+
+`No such file or directory` means the image predates the Markdown backups and
+needs the rebuild in Appendix C. (Run this over SSH on the box — on a laptop it
+fails with _cannot connect to the Docker daemon_, which says nothing about the
+deployment.)
+
+---
+
 ## Updating later
 
 Portainer → **Stacks → lux-viridis → Pull and redeploy**.
@@ -406,6 +438,14 @@ inside Portainer but succeeds over SSH, build it by hand and have the stack run
 the finished image instead. The app is identical either way; only who runs
 `docker build` changes.
 
+Common reasons the Repository path fails on a NAS, none of which affect a
+hand-run `docker build`: Portainer's build has no TTY and a short timeout, so a
+15-minute native-module compile can be killed with no useful error; a private
+repo needs a token with _Contents_ read access; and Portainer clones to its own
+volume, which on a small system disk can run out of space while the pool sits
+empty. If you land here, it is worth writing down which of these it was — the
+choice between paths is otherwise impossible to reconstruct months later.
+
 Build on the box:
 
 ```bash
@@ -417,8 +457,10 @@ docker build -t lux-viridis:latest .
 Unlike Portainer's spinner, this prints the real error if a build step fails.
 
 Then in Portainer → **Stacks → + Add stack**, set **Build method** to **Web
-editor** and paste the compose file with `build: .` removed from the `app`
-service, so it uses the image you just built:
+editor** and paste the compose file with `build: .` removed from **both** the
+`app` and `stories` services, so they use the image you just built. Leaving
+`build: .` in is what produces the silent no-op described in
+[Which path did I deploy with?](#which-path-did-i-deploy-with):
 
 ```yaml
 services:
@@ -433,6 +475,28 @@ services:
       - ${LUX_DATA_DIR:-./data}:/data
     ports:
       - "${LUX_PORT:-3000}:3000"
+
+  # Nightly Markdown dump — the readable backup. Same image as app; the
+  # entrypoint override matters, or this container would re-run migrations.
+  stories:
+    image: lux-viridis:latest
+    container_name: lux-stories
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DATABASE_FILE: /data/lux.db
+      BACKUP_DIR: /backups/stories
+      BACKUP_KEEP: "5"
+    volumes:
+      - ${LUX_DATA_DIR:-./data}:/data
+      - ${LUX_BACKUP_DIR:-./backups}:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "while true; do
+         node scripts/backup-stories.mjs || echo '[backup] stories FAILED';
+         sleep 86400;
+       done"
 ```
 
 Copy the `backup` service across from `docker-compose.yml` unchanged, and set
@@ -463,8 +527,23 @@ cd / && rm -rf /tmp/lux-build
 ```
 
 Then Portainer → **Stacks → lux-viridis → Update the stack**, with **Re-pull
-image** left off. Migrations run at startup as usual, and the database is a bind
-mount, so none of this touches your writing.
+image** left off. Leaving it **on** fails the whole stack with _pull access
+denied for lux-viridis_ — it forces a registry lookup for an image that only
+exists on this box.
+
+Migrations run at startup as usual, and the database is a bind mount, so none of
+this touches your writing.
+
+Confirm the new image is what is actually running, rather than trusting the
+green tick — the failure mode here is a redeploy that succeeds on stale code:
+
+```bash
+docker exec lux-viridis cat package.json | grep '"backup:stories"'
+docker ps --format '{{.Names}}\t{{.Status}}' | grep lux
+```
+
+The first prints the script line if the image includes the Markdown backups; the
+second should list `lux-viridis`, `lux-stories` and `lux-backup`.
 
 ### Environment variables that will not apply
 
