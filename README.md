@@ -40,23 +40,23 @@ of what makes the canvas feel like a page.
 
 ## Publishing the repo
 
-The repository is initialised with everything committed on `main`. To push it
-somewhere the OMV box can clone from:
+Create an empty repository on GitHub (no README, no `.gitignore` — the tree
+already has both), then:
 
 ```bash
-gh repo create lux-viridis --private --source=. --remote=origin --push
-```
-
-Or with an existing remote:
-
-```bash
-git remote add origin <url>
+git remote add origin git@github.com:<you>/lux-viridis.git
 git push -u origin main
 ```
 
-**Private is the right default** — not because the code is sensitive, but
-because this is your daughter's writing project, and a public repo invites
-attention she has not asked for.
+With the `gh` CLI installed, one command does both:
+
+```bash
+gh repo create lux-viridis --public --source=. --remote=origin --push
+```
+
+Nothing here is sensitive: the database, `.env` and `backups/` are gitignored,
+so no writing and no credentials are in the repository. Choose private instead
+if you would rather the deployment details not be public.
 
 Deliberately never committed: `data/` (the database holds manuscripts *and*
 password hashes), `backups/`, and `.env` (the tunnel token grants the ability to
@@ -180,8 +180,8 @@ account. **Do not seed the demo data on a deployment** —
 The site is on the public internet, and anyone who finds it reaches your login
 page. To put Cloudflare's own authentication in front of it, go to **Zero Trust
 → Access → Applications → Add an application → Self-hosted**, select the
-hostname, and add a policy allowing only your and your daughter's email
-addresses. Visitors then get a Cloudflare email-code prompt before the app is
+hostname, and add a policy allowing only the email addresses that should have
+access. Visitors then get a Cloudflare email-code prompt before the app is
 reachable at all.
 
 ### Updating later

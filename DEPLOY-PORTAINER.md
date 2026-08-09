@@ -179,13 +179,13 @@ hostname**:
 | field | value |
 |---|---|
 | Subdomain | `write` (or whatever you prefer) |
-| Domain | `lordelrondsvault.org` |
+| Domain | your domain |
 | Path | leave empty |
 | Type | `HTTP` |
 | URL | *see below* |
 
 **For the URL, copy the pattern your working hostnames already use.** Open the
-entry for `books.lordelrondsvault.org` and look at its URL:
+entry for an existing service (calibre-web, Kavita) and look at its URL:
 
 - If it reads `192.168.x.x:8083`, use that same IP with `:3000`.
 - If it reads `localhost:8083` or `127.0.0.1:8083`, use `localhost:3000`.
@@ -206,7 +206,7 @@ Save. Cloudflare applies it within a few seconds.
 
 ## Step 7 — Create your account
 
-Visit `https://write.lordelrondsvault.org`.
+Visit `https://write.<your-domain>`.
 
 The first visit shows a setup screen — no account exists yet. Create yours with
 an email, a password, and two recovery answers. The recovery answers are the
@@ -217,10 +217,10 @@ they cannot be read back out of the database.
 (`writer@example.com` / `password`) is a development convenience and would be a
 working login on an internet-facing site.
 
-### Adding your daughter's account
+### Adding a second account
 
 The setup screen only runs once — it returns a 409 afterwards — and there is no
-in-app screen for creating a second account. Add hers from the server shell:
+in-app screen for creating a second account. Add one from the server shell:
 
 ```bash
 docker exec -it lux-viridis node scripts/user-standalone.mjs add
@@ -230,8 +230,8 @@ It asks for an email, a display name, and a password (typed twice, not echoed).
 The `-it` matters: without it the tool refuses to run rather than echo the
 password into your scrollback.
 
-She can then set her own recovery questions from the account menu after signing
-in.
+They can then set their own recovery questions from the account menu after
+signing in.
 
 ### If a password is ever forgotten
 
@@ -258,13 +258,13 @@ your login page — the app's own password is the only thing in the way.
 Cloudflare Access puts a second door in front of it, free on your plan:
 
 1. **Zero Trust → Access → Applications → Add an application → Self-hosted**
-2. Application domain: `write.lordelrondsvault.org`
+2. Application domain: `write.<your-domain>`
 3. Add a policy: **Allow**, include **Emails** → your address and your
-   daughter's.
+   anyone else who should have access.
 
 Visitors then get a Cloudflare email-code prompt and never reach the app at all
 unless their address is on the list. Worth the five minutes for a site holding a
-teenager's writing.
+someone's private writing.
 
 ---
 
