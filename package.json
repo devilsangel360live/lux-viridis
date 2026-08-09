@@ -12,6 +12,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed && echo '\\n⚠️  Restart the dev server — it holds a handle to the old database file.'",
     "user": "tsx scripts/user.mts",
+    "backup:stories": "node scripts/backup-stories.mjs",
     "fonts:vendor": "node scripts/vendor-fonts.mjs"
   },
   "dependencies": {

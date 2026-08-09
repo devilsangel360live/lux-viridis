@@ -65,6 +65,9 @@ COPY --from=builder /app/scripts/migrate-standalone.mjs ./scripts/migrate-standa
 # account or reset a forgotten password on a deployment, since setup refuses
 # to run once an account exists.
 COPY --from=builder /app/scripts/user-standalone.mjs ./scripts/user-standalone.mjs
+# The readable Markdown backup, run on a timer by the `stories` service and
+# available by hand: docker exec lux-viridis node scripts/backup-stories.mjs
+COPY --from=builder /app/scripts/backup-stories.mjs ./scripts/backup-stories.mjs
 COPY --from=builder /app/docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \

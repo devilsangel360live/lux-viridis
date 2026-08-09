@@ -314,6 +314,47 @@ which matters on a home server. One trap worth knowing: setting `lineHeight` on
 the react-pdf `Page` style silently suppresses every `fixed` element, so running
 heads and page numbers vanish. Line spacing therefore lives on the text styles.
 
+## Readable backups
+
+DOCX and PDF are reading formats — they carry the prose and drop the structure.
+For a backup that outlives the app, `scripts/backup-stories.mjs` writes every
+project as a folder of Markdown:
+
+```bash
+npm run backup:stories                       # -> ./backups/2026-08-09/…
+BACKUP_DIR=/mnt/pool/lux npm run backup:stories
+docker exec lux-viridis node scripts/backup-stories.mjs
+```
+
+The `stories` service in `docker-compose.yml` runs it nightly and keeps five
+days, alongside — not instead of — the `.db` snapshot. The two are different
+tools: the database restores *this app*, the Markdown survives it. If the
+container will not start, or the schema has moved on, or the project is
+abandoned, the folder still opens in Obsidian, Scrivener or Word.
+
+```
+2026-08-09/The-Salt-Road/
+  OVERVIEW.md                    binder as a nested list, with word counts
+  manuscript/01-Act-I/01-The-Rain-That-Would-Not-Stop/01-Reeds-at-first-light.md
+  world/01-Characters/01-Kaelen-Roth.md
+  planning/01-Three-Act-Structure/03-Midpoint-Reversal.md
+```
+
+Filenames are numbered by binder position, so lexical sort *is* reading order —
+the property that makes the dump usable somewhere else. Frontmatter carries the
+per-node `meta` that DOCX and PDF discard: POV, status, synopsis, word count,
+and @mentions flattened to names. A beat's canvas cards are listed under its
+text. A container that holds both children and prose gets an `_index.md`.
+
+Snapshots and trash are deliberately excluded — twenty-five sibling versions of
+every scene would bury the manuscript, and legibility is the whole point. The
+database backup remains the way to recover those. Re-running on the same day
+replaces that day's folder rather than merging, so a renamed chapter cannot
+leave an orphan file behind, and the database is opened read-only.
+
+`backups/` is gitignored, so put `LUX_BACKUP_DIR` somewhere your NAS replicates
+off-box. A backup that dies with the pool is not a fallback.
+
 ## Projects
 
 The app holds many stories. The switcher in the top bar lists them with their

@@ -35,6 +35,39 @@ services:
       # number goes in the tunnel's Public Hostname.
       - "${LUX_PORT:-3000}:3000"
 
+  # Nightly Markdown dump of every project — the portability backup.
+  #
+  # Distinct in purpose from the .db snapshot below: that one restores this app,
+  # this one survives it. Runs in the app image because it needs Node and
+  # better-sqlite3 to walk the ProseMirror documents; the Alpine container below
+  # has neither.
+  #
+  # /data is mounted writable even though this only ever reads: opening a WAL
+  # database creates its -shm sidecar and takes a lock, so a `:ro` mount fails
+  # with SQLITE_READONLY_DIRECTORY. The connection itself is opened read-only
+  # in the script, which is where the real guarantee lives.
+  stories:
+    image: lux-viridis:latest
+    container_name: lux-stories
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DATABASE_FILE: /data/lux.db
+      BACKUP_DIR: /backups/stories
+      BACKUP_KEEP: "5"
+    volumes:
+      - ${LUX_DATA_DIR:-./data}:/data
+      - ${LUX_BACKUP_DIR:-./backups}:/backups
+    # Overrides the image's entrypoint: migrations must not run from here — the
+    # app container already applied them on its own startup.
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "while true; do
+         node scripts/backup-stories.mjs || echo '[backup] stories FAILED';
+         sleep 86400;
+       done"
+
   # Nightly copy of the database to the host. sqlite3 .backup is used rather
   # than cp because it is safe against a live writer — copying the file while a
   # transaction is in flight can capture a torn state.
