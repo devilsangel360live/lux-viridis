@@ -61,6 +61,10 @@ COPY --from=builder /app/public ./public
 # extra install (and no compiler) is required here.
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/scripts/migrate-standalone.mjs ./scripts/migrate-standalone.mjs
+# Account management from the server shell — the only way to add a second
+# account or reset a forgotten password on a deployment, since setup refuses
+# to run once an account exists.
+COPY --from=builder /app/scripts/user-standalone.mjs ./scripts/user-standalone.mjs
 COPY --from=builder /app/docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \

@@ -276,6 +276,20 @@ If the questions are forgotten too, `npm run user -- passwd <email>` resets a
 password from the server shell. On a family instance, access to the machine is
 a reasonable proof of identity. `list`, `add` and `remove` are also available.
 
+On a deployment, use the standalone equivalent — the runtime image is Next's
+bundle, which has no `tsx` to run the `.mts` version:
+
+```bash
+docker exec -it lux-viridis node scripts/user-standalone.mjs add
+docker exec -it lux-viridis node scripts/user-standalone.mjs passwd <email>
+```
+
+**This is the only way to create a second account on a deployment**, since the
+setup route closes after the first one. `remove` offers to transfer the
+account's projects to someone else rather than deleting a person's writing:
+`projects.owner_id` has no cascade, so SQLite refuses the delete outright while
+any remain.
+
 **Every project belongs to a user, and ownership is enforced in the query, not
 checked afterwards.** `src/server/guard.ts` exposes `requireUser`,
 `requireProject`, `requireNode`, `requireSnapshot` and `requireLink`; every API
