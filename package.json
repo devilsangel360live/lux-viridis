@@ -11,7 +11,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:reset": "rm -rf data && npm run db:migrate && npm run db:seed && echo '\\n⚠️  Restart the dev server — it holds a handle to the old database file.'",
-    "user": "tsx scripts/user.mts"
+    "user": "tsx scripts/user.mts",
+    "fonts:vendor": "node scripts/vendor-fonts.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

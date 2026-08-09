@@ -6,8 +6,9 @@
  * whatever licence they carry — a lot of surface for a preference. These eight
  * are all open-licensed and cover the ranges writers actually ask for.
  *
- * The CSS variables are declared in layout.tsx via next/font, which self-hosts
- * the files at build time; nothing is fetched from Google at runtime.
+ * The CSS variables are declared in layout.tsx via next/font/local, reading
+ * woff2 files vendored under `src/app/fonts/`; nothing is fetched from Google
+ * at build time or at runtime.
  */
 
 export type FontId =
